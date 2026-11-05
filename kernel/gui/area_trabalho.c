@@ -14,10 +14,12 @@
 #include "video.h"
 #include "disco.h"
 #include "sistema.h"
+#include "rede.h"
 
 static uint32_t *fundo;
 static int larg, alt;
 static int minuto_mostrado = -1;
+static char rede_mostrada[24] = "?";
 
 typedef struct {
     const char *nome;
@@ -33,6 +35,7 @@ static const icone_t icones[] = {
     { "Banana",      "/bin/banana",      &arte_icone_banana },
     { "Sagui 3D",    "/bin/sagui3d",     &arte_icone_sagui3d },   /* bônus B4 */
     { "Sobre",       "/bin/sobre-o-sistema",   &arte_icone_sobre },
+    { "Cipó",        "/bin/cipo",        &arte_icone_cipo },       /* navegador (D032) */
     { "Pendrive",    "/bin/arquivos",    &arte_icone_pendrive },   /* só aparece com um pendrive conectado (H34) */
 };
 #define QTD_ICONES (int)(sizeof icones / sizeof icones[0])
@@ -43,15 +46,22 @@ static char nome_pendrive[24] = "Pendrive";
 static bool icone_visivel(int i) { return i != ICONE_PENDRIVE || pendrive_visivel; }
 #define ICONE_X 20
 #define ICONE_Y0 (BARRA_SUPERIOR + 16)
-#define ICONE_PASSO 84   /* 8 ícones cabem em 768 linhas */
+#define ICONE_PASSO 84   /* 8 ícones por coluna cabem em 768 linhas */
+#define ICONES_COLUNA 8
+#define ICONE_COLUNA_PASSO 110
 #define ICONE_L 96
 #define ICONE_A 88
 
 int area_qtd_icones(void) { return QTD_ICONES; }
+int area_qtd_programas(void) { return ICONE_PENDRIVE; }
+const char *area_icone_nome(int i) { return icones[i].nome; }
+const desenho_t *area_icone_desenho(int i) { return icones[i].desenho; }
 
 void area_icone_retangulo(int i, int *x, int *y, int *l, int *a)
 {
-    *x = ICONE_X; *y = ICONE_Y0 + i * ICONE_PASSO; *l = ICONE_L; *a = ICONE_A;
+    *x = ICONE_X + (i / ICONES_COLUNA) * ICONE_COLUNA_PASSO;
+    *y = ICONE_Y0 + (i % ICONES_COLUNA) * ICONE_PASSO;
+    *l = ICONE_L; *a = ICONE_A;
 }
 
 /* Interpolação de um canal em inteiros. */
@@ -120,7 +130,9 @@ bool area_relogio_mudou(void)
 {
     data_hora_t d;
     cmos_ler_data(&d);
-    return d.minuto != minuto_mostrado;
+    char r[24];
+    rede_resumo(r, sizeof r);
+    return d.minuto != minuto_mostrado || txt_compara(r, rede_mostrada) != 0;
 }
 
 void area_barra(superficie_t *s)
@@ -139,8 +151,18 @@ void area_barra(superficie_t *s)
     char hora[48];
     snformatar(hora, sizeof hora, "%s %02u/%02u/%u  %02u:%02u", semana[dia_da_semana(d.ano, d.mes, d.dia)],
                d.dia, d.mes, d.ano, d.hora, d.minuto);
-    sup_texto(s, larg - texto_largura(hora) - 10, 4, hora, 0xFFFFFF);
-    klog("[GUI] relogio: %s\n", hora);
+    int xh = larg - texto_largura(hora) - 10;
+    sup_texto(s, xh, 4, hora, 0xFFFFFF);
+    /* Rede (D031): três barrinhas, verdes com IP, cinzas sem; e o estado. */
+    rede_resumo(rede_mostrada, sizeof rede_mostrada);
+    if (rede_mostrada[0]) {
+        bool ok = rede_mostrada[0] >= '0' && rede_mostrada[0] <= '9';
+        int xt = xh - 24 - texto_largura(rede_mostrada);
+        sup_texto(s, xt, 4, rede_mostrada, ok ? 0xB8E8C8 : 0x9AA8B8);
+        for (int b = 0; b < 3; b++)
+            sup_retangulo(s, xt - 22 + b * 6, 16 - 4 * b, 4, 4 + 4 * b, ok ? 0x3CC870 : 0x5A6470);
+    }
+    klog("[GUI] relogio: %s rede: %s\n", hora, rede_mostrada[0] ? rede_mostrada : "-");
 }
 
 int area_icone_em(int x, int y)

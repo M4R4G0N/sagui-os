@@ -34,6 +34,7 @@
 #define JANELAS_USUARIO 0xA0000000u   /* onde os pixels aparecem no espaço do programa */
 #define ESPACO_JANELA   0x00400000u   /* 4 MB por janela */
 #define DUPLO_CLIQUE    45            /* tiques (450 ms) */
+#define SOMBRA          5             /* deslocamento da sombra das janelas */
 
 typedef struct {
     bool       usada;
@@ -47,6 +48,7 @@ typedef struct {
     uint32_t   virt;          /* endereço dos pixels no espaço do programa */
     evento_t   fila[FILA_EVENTOS];
     uint32_t   ini, fim;
+    bool       minimizada;    /* só aparece na barra de tarefas; fica no fundo da pilha */
 } janela_t;
 
 static janela_t janelas[MAX_JANELAS];
@@ -126,19 +128,156 @@ void gui_redesenhar(int x, int y, int l, int a)
  * isso, arrastar deixava rastros). */
 static void redesenhar_janela(janela_t *j)
 {
-    gui_redesenhar(j->x - 1, j->y - 1, moldura_l(j) + 2, moldura_a(j) + 2);
+    gui_redesenhar(j->x - 1, j->y - 1, moldura_l(j) + 2 + SOMBRA, moldura_a(j) + 2 + SOMBRA);
 }
 
+static int tarefas_y(void) { return (int)video_altura() - BARRA_TAREFAS; }
+static void redesenhar_tarefas(void) { gui_redesenhar(0, tarefas_y(), (int)video_largura(), BARRA_TAREFAS); }
+
+/* As minimizadas ficam no fundo da pilha: se a de cima está minimizada,
+ * todas estão, e ninguém tem o foco. */
 static janela_t *focada(void)
 {
-    return qtd ? &janelas[ordem[qtd - 1]] : NULL;
+    return qtd && !janelas[ordem[qtd - 1]].minimizada ? &janelas[ordem[qtd - 1]] : NULL;
+}
+
+/* ------------------------------------------------------------ menu Iniciar */
+#define MENU_L      220
+#define MENU_ITEM   38
+#define MENU_TOPO   30          /* faixa verde com o nome */
+#define INICIAR_L   104
+static bool menu_aberto;
+static int menu_sobre = -1;     /* item sob o mouse */
+
+static int menu_itens(void) { return area_qtd_programas() + 1; }   /* + "Reiniciar" */
+static int menu_a(void) { return MENU_TOPO + menu_itens() * MENU_ITEM + 6; }
+static int menu_y(void) { return tarefas_y() - menu_a(); }
+static void redesenhar_menu(void) { gui_redesenhar(0, menu_y(), MENU_L + SOMBRA + 4, menu_a() + SOMBRA); }
+
+static int menu_item_em(int x, int y)
+{
+    int ry = y - menu_y() - MENU_TOPO;
+    if (!menu_aberto || x < 4 || x >= 4 + MENU_L || ry < 0 || ry >= menu_itens() * MENU_ITEM) return -1;
+    return ry / MENU_ITEM;
+}
+
+static void menu_abrir(bool sim)
+{
+    if (menu_aberto == sim) return;
+    menu_aberto = sim;
+    menu_sobre = -1;
+    redesenhar_menu();
+    redesenhar_tarefas();
+}
+
+static void desenhar_menu(superficie_t *t)
+{
+    if (!menu_aberto) return;
+    int x = 4, y = menu_y(), a = menu_a();
+    sup_escurecer(t, x + SOMBRA, y + SOMBRA, MENU_L, a);
+    sup_retangulo(t, x, y, MENU_L, a, 0xF4F4F0);
+    sup_moldura(t, x - 1, y - 1, MENU_L + 2, a + 2, 0x101010);
+    sup_retangulo(t, x, y, MENU_L, MENU_TOPO, 0x0B7A3E);
+    sup_texto(t, x + 12, y + 7, "SaguiOS", 0xFFDF4A);
+    sup_texto(t, x + 80, y + 7, "programas", 0xD8F0E0);
+    for (int i = 0; i < menu_itens(); i++) {
+        int iy = y + MENU_TOPO + i * MENU_ITEM;
+        bool sob = i == menu_sobre;
+        if (sob) sup_retangulo(t, x + 2, iy + 1, MENU_L - 4, MENU_ITEM - 2, 0x2A6FD8);
+        if (i < area_qtd_programas()) {
+            sup_desenho(t, x + 8, iy + 3, area_icone_desenho(i), 1);
+            sup_texto(t, x + 52, iy + 11, area_icone_nome(i), sob ? 0xFFFFFF : 0x1E2328);
+        } else {
+            sup_retangulo(t, x + 8, iy, MENU_L - 16, 1, 0xC4CBD2);
+            sup_texto(t, x + 52, iy + 11, "Reiniciar o PC", sob ? 0xFFFFFF : 0x8A2A22);
+        }
+    }
+}
+
+static void menu_escolher(int i)
+{
+    menu_abrir(false);
+    klog("[GUI] menu Iniciar: item %d\n", i);
+    if (i < area_qtd_programas()) area_icone_abrir(i);
+    else { SEM_RETORNO void maquina_reiniciar(void); maquina_reiniciar(); }
+}
+
+/* ------------------------------------------------------------ barra de tarefas */
+
+/* Botões na ordem das posições em janelas[] (estável enquanto a janela vive). */
+static int tarefa_largura(void)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_JANELAS; i++) n += janelas[i].usada;
+    int livre = (int)video_largura() - INICIAR_L - 16;
+    int l = n ? livre / n : 0;
+    return l > 190 ? 190 : l;
+}
+
+static int tarefa_em(int x)   /* índice em janelas[], ou -1 */
+{
+    int l = tarefa_largura(), bx = INICIAR_L + 12;
+    for (int i = 0; i < MAX_JANELAS && l > 0; i++) {
+        if (!janelas[i].usada) continue;
+        if (x >= bx && x < bx + l - 4) return i;
+        bx += l;
+    }
+    return -1;
+}
+
+static void desenhar_tarefas(superficie_t *t)
+{
+    int y = tarefas_y(), L = (int)video_largura();
+    sup_retangulo(t, 0, y, L, BARRA_TAREFAS, 0x18202A);
+    sup_retangulo(t, 0, y, L, 1, 0x0B7A3E);
+    /* Iniciar: a cabecinha do sagui e o nome. */
+    sup_retangulo(t, 4, y + 4, INICIAR_L, BARRA_TAREFAS - 8, menu_aberto ? 0x0B7A3E : 0x26303C);
+    sup_moldura(t, 4, y + 4, INICIAR_L, BARRA_TAREFAS - 8, menu_aberto ? 0x3CC870 : 0x46505C);
+    desenho_t cabeca = { arte_icone_sobre.linhas + 2, 32, 16 };
+    sup_desenho(t, 8, y + 9, &cabeca, 1);
+    sup_texto(t, 42, y + 9, "Iniciar", 0xFFDF4A);
+    int l = tarefa_largura(), bx = INICIAR_L + 12;
+    janela_t *f = focada();
+    for (int i = 0; i < MAX_JANELAS && l > 0; i++) {
+        janela_t *j = &janelas[i];
+        if (!j->usada) continue;
+        uint32_t fundo = j == f ? 0x0B7A3E : j->minimizada ? 0x20282F : 0x3A4450;
+        sup_retangulo(t, bx, y + 4, l - 4, BARRA_TAREFAS - 8, fundo);
+        sup_moldura(t, bx, y + 4, l - 4, BARRA_TAREFAS - 8, j == f ? 0x3CC870 : 0x56606C);
+        char nome[48];
+        int cabe = (l - 16) / 8;
+        if (cabe > (int)sizeof nome - 1) cabe = (int)sizeof nome - 1;
+        txt_copia_n(nome, j->titulo, (size_t)(cabe > 0 ? cabe + 1 : 1));
+        sup_texto(t, bx + 8, y + 9, nome, j->minimizada ? 0x8A949E : 0xFFFFFF);
+        bx += l;
+    }
+}
+
+static void minimizar(int i)
+{
+    janela_t *j = &janelas[i];
+    if (j->minimizada) return;
+    int k = 0;
+    while (k < qtd && ordem[k] != i) k++;
+    for (; k > 0; k--) ordem[k] = ordem[k - 1];   /* vai para o fundo da pilha */
+    ordem[0] = i;
+    j->minimizada = true;
+    redesenhar_janela(j);
+    if (focada()) redesenhar_janela(focada());
+    redesenhar_tarefas();
+    if (arrastando == i) arrastando = -1;
+    if (captura == i) captura = -1;
+    klog("[GUI] janela %d minimizada\n", j->id);
 }
 
 static void desenhar_moldura(janela_t *j, bool foco)
 {
     int x = j->x, y = j->y, l = moldura_l(j), a = moldura_a(j);
     uint32_t barra = foco ? 0x0B7A3E : 0x5A6470;
+    sup_escurecer(&tela, x + SOMBRA, y + a, l, SOMBRA);           /* sombra embaixo e à direita */
+    sup_escurecer(&tela, x + l, y + SOMBRA, SOMBRA, a - SOMBRA);
     sup_retangulo(&tela, x, y, l, BARRA_TITULO, barra);
+    if (foco) sup_retangulo(&tela, x, y, l, 2, 0x3CC870);            /* faixa clara: esta tem o foco */
     sup_retangulo(&tela, x, y + BARRA_TITULO, BORDA, a - BARRA_TITULO, barra);
     sup_retangulo(&tela, x + l - BORDA, y + BARRA_TITULO, BORDA, a - BARRA_TITULO, barra);
     sup_retangulo(&tela, x, y + a - BORDA, l, BORDA, barra);
@@ -151,6 +290,10 @@ static void desenhar_moldura(janela_t *j, bool foco)
         sup_retangulo(&tela, bx + k, by + k, 2, 1, 0xFFFFFF);
         sup_retangulo(&tela, bx + 15 - k - 1, by + k, 2, 1, 0xFFFFFF);
     }
+    /* Minimizar: um traço embaixo. */
+    bx -= 20;
+    sup_retangulo(&tela, bx, by, 16, 16, foco ? 0x2F8F55 : 0x6A747E);
+    sup_retangulo(&tela, bx + 3, by + 11, 10, 2, 0xFFFFFF);
 }
 
 /* Recompõe o retângulo sujo e mostra. */
@@ -164,11 +307,14 @@ void gui_mostrar(void)
     area_fundo(&tela);
     for (int k = 0; k < qtd; k++) {
         janela_t *j = &janelas[ordem[k]];
+        if (j->minimizada) continue;
         desenhar_moldura(j, k == qtd - 1);
         sup_copiar(&tela, j->x + BORDA, j->y + BARRA_TITULO, j->px, j->larg, j->alt, j->larg);
     }
+    desenhar_menu(&tela);
     desenhar_aviso(&tela);
     if (tela.cy0 < BARRA_SUPERIOR) area_barra(&tela);
+    if (tela.cy1 > tarefas_y()) desenhar_tarefas(&tela);
     video_marcar(tela.cx0, tela.cy0, tela.cx1 - tela.cx0, tela.cy1 - tela.cy0);
     video_mostrar();
 }
@@ -193,6 +339,7 @@ static int janela_em(int x, int y)   /* índice em ordem[], de cima para baixo *
 {
     for (int k = qtd - 1; k >= 0; k--) {
         janela_t *j = &janelas[ordem[k]];
+        if (j->minimizada) continue;
         if (x >= j->x && x < j->x + moldura_l(j) && y >= j->y && y < j->y + moldura_a(j))
             return k;
     }
@@ -201,7 +348,15 @@ static int janela_em(int x, int y)   /* índice em ordem[], de cima para baixo *
 
 static void trazer_para_cima(int k)
 {
+    janela_t *alvo = &janelas[ordem[k]];
+    if (alvo->minimizada) {
+        alvo->minimizada = false;
+        redesenhar_janela(alvo);
+        redesenhar_tarefas();
+        klog("[GUI] janela %d restaurada\n", alvo->id);
+    }
     if (k == qtd - 1) return;
+    redesenhar_tarefas();
     janela_t *antes = focada();
     int i = ordem[k];
     for (; k < qtd - 1; k++) ordem[k] = ordem[k + 1];
@@ -224,7 +379,7 @@ static void tratar_mouse(evento_mouse_t *m)
         }
         int nx = m->x - arr_dx, ny = m->y - arr_dy;
         if (ny < BARRA_SUPERIOR) ny = BARRA_SUPERIOR;
-        if (ny > (int)video_altura() - BARRA_TITULO) ny = (int)video_altura() - BARRA_TITULO;
+        if (ny > tarefas_y() - BARRA_TITULO) ny = tarefas_y() - BARRA_TITULO;
         if (nx > (int)video_largura() - 40) nx = (int)video_largura() - 40;
         if (nx < 40 - moldura_l(j)) nx = 40 - moldura_l(j);
         if (nx != j->x || ny != j->y) {
@@ -235,6 +390,29 @@ static void tratar_mouse(evento_mouse_t *m)
         return;
     }
 
+    if (menu_aberto && !apertou) {
+        int s = menu_item_em(m->x, m->y);
+        if (s != menu_sobre) { menu_sobre = s; redesenhar_menu(); }
+        return;
+    }
+    if (apertou && menu_aberto) {
+        int s = menu_item_em(m->x, m->y);
+        if (s >= 0 && (m->mudaram & BOTAO_ESQUERDO)) { menu_escolher(s); return; }
+        menu_abrir(false);                       /* clique fora fecha o menu */
+        if (m->y >= tarefas_y() && m->x < 4 + INICIAR_L) return;   /* no próprio Iniciar: só fecha */
+    }
+    if (apertou && m->y >= tarefas_y()) {
+        captura = -1;
+        if (!(m->mudaram & BOTAO_ESQUERDO)) return;
+        if (m->x >= 4 && m->x < 4 + INICIAR_L) { menu_abrir(true); return; }
+        int i = tarefa_em(m->x);
+        if (i < 0) return;
+        int k = 0;
+        while (k < qtd && ordem[k] != i) k++;
+        if (&janelas[i] == focada()) minimizar(i);   /* já está na frente: esconde */
+        else trazer_para_cima(k);
+        return;
+    }
     if (apertou) {
         int k = janela_em(m->x, m->y);
         if (k < 0) {
@@ -259,6 +437,8 @@ static void tratar_mouse(evento_mouse_t *m)
                 evento_t e = { .tipo = EV_FECHAR };
                 entregar(j, &e);
                 klog("[GUI] fechar janela %d (%s)\n", j->id, j->titulo);
+            } else if ((m->mudaram & BOTAO_ESQUERDO) && rx >= bx - 20 && rx < bx - 4 && ry >= 4 && ry < 20) {
+                minimizar(idx);
             } else if (m->mudaram & BOTAO_ESQUERDO) {
                 arrastando = idx;
                 arr_dx = rx; arr_dy = ry;
@@ -327,7 +507,7 @@ static void tarefa_gerenciador(void *arg)
         disco_t *pd = NULL;
         for (int k = 0; k < MAX_DISCOS && !pd; k++) { disco_t *d = disco_indice(k); if (d && d->presente && !d->de_boot) pd = d; }
         if (area_pendrive(pd != NULL, pd ? (pd->rotulo[0] ? pd->rotulo : "Pendrive") : NULL))
-            gui_redesenhar(0, BARRA_SUPERIOR, 140, (int)video_altura() - BARRA_SUPERIOR);
+            gui_redesenhar(0, BARRA_SUPERIOR, 240, (int)video_altura() - BARRA_SUPERIOR);
         if (aviso_ate && (int32_t)(relogio_tiques() - aviso_ate) >= 0) {
             aviso_ate = 0;
             int x, y;
@@ -381,6 +561,7 @@ static void destruir(int i)
     if (arrastando == i) arrastando = -1;
     if (captura == i) captura = -1;
     if (focada()) redesenhar_janela(focada());   /* a nova janela de cima ganha o foco */
+    redesenhar_tarefas();
 }
 
 void janelas_do_processo_fechar(processo_t *p)
@@ -425,13 +606,14 @@ int32_t sis_criar_janela(uint32_t ptitulo, uint32_t dims, uint32_t ppixels, uint
     j->x = 150 + n * 34;
     j->y = BARRA_SUPERIOR + 30 + n * 28;
     if (j->x + moldura_l(j) > (int)video_largura()) j->x = (int)video_largura() - moldura_l(j);
-    if (j->y + moldura_a(j) > (int)video_altura()) j->y = (int)video_altura() - moldura_a(j);
+    if (j->y + moldura_a(j) > tarefas_y()) j->y = tarefas_y() - moldura_a(j);
     if (j->x < 0) j->x = 0;
     if (j->y < BARRA_SUPERIOR) j->y = BARRA_SUPERIOR;
     janela_t *antes = focada();
     if (antes) redesenhar_janela(antes);
     ordem[qtd++] = i;
     redesenhar_janela(j);
+    redesenhar_tarefas();
     gui_mostrar();
     *(uint32_t *)ppixels = j->virt;
     klog("[GUI] janela %d criada por %d: \"%s\" %dx%d em (%d,%d)\n", j->id, j->pid, j->titulo, l, a, j->x, j->y);
@@ -513,6 +695,7 @@ int32_t sis_titulo_janela(uint32_t id, uint32_t ptitulo, uint32_t c, uint32_t d,
     int r = usuario_texto((const char *)ptitulo, j->titulo, sizeof j->titulo);
     if (r < 0) return r;
     gui_redesenhar(j->x, j->y, moldura_l(j), BARRA_TITULO);
+    redesenhar_tarefas();
     gui_mostrar();
     return 0;
 }

@@ -30,6 +30,17 @@ void sup_retangulo(superficie_t *s, int x, int y, int l, int a, uint32_t cor)
     }
 }
 
+/* Escurece o que já está pintado (sombra das janelas): cada canal * 5/8. */
+void sup_escurecer(superficie_t *s, int x, int y, int l, int a)
+{
+    int x0 = x < s->cx0 ? s->cx0 : x, y0 = y < s->cy0 ? s->cy0 : y;
+    int x1 = x + l > s->cx1 ? s->cx1 : x + l, y1 = y + a > s->cy1 ? s->cy1 : y + a;
+    for (int j = y0; j < y1; j++) {
+        uint32_t *p = s->px + j * s->larg;
+        for (int i = x0; i < x1; i++) p[i] = ((p[i] >> 1) & 0x7F7F7F) + ((p[i] >> 3) & 0x1F1F1F);
+    }
+}
+
 void sup_moldura(superficie_t *s, int x, int y, int l, int a, uint32_t cor)
 {
     sup_retangulo(s, x, y, l, 1, cor);

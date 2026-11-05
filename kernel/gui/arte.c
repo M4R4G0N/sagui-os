@@ -326,6 +326,41 @@ static const char *const icone_pendrive[] = {
 };
 
 const desenho_t arte_sagui            = { sagui, 32, 32 };
+static const char *const icone_cipo[] = {
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "........G..PPPPPPPPPP...........",
+    ".......GGGPVGGGGGGVVVPP.........",
+    "..g....GGPVVGGGGGVVVVVPP........",
+    "..gg...PVVVVGGGGGVVVVVVVP.......",
+    "..gg..PVVVVVGGGGVVVVVVVVVP......",
+    "...ggPPVVVVVVVVVVVVVVVVVVPP.....",
+    "...gggVVVVVVVVVVVVVVVVVVVGP.....",
+    "....ggVVVVVVVVVVVVVVVVVVGGGP....",
+    "....PggVVVVVVVGVVVVVVVVVGGGP....",
+    "....PgggVVVVVGGGVVVVVVVGGGGP....",
+    "....PVggggVVVGGgggggVVVGGGGP....",
+    "....PVVgggggggggggggggVVGGGP....",
+    "....PVVVVggggggGGGVVgGgVVVVP....",
+    "....PVVVVVVVGGGGGVVVGGGgVVVP....",
+    "....PGVVVVVVGGGGVVVVGGgggVVP....",
+    "....PGVVVVVVVVGVVVVVVVVggVVP....",
+    "....PGVVVVVVVVVVVVVVVVVVggGP....",
+    ".....PVVVVVVVVVVVVVVVVVVgggG....",
+    ".....PPVVVVVVVVVVVVVVVVVGgGGG...",
+    "......PVVVVVVVVVVVVVVVVGGPGG....",
+    ".......PVVVVVVGGGVVVVVVGP.gg....",
+    "........PPVVVGGGGGVVVVPP...gg...",
+    ".........PPVGGGGGGVVVPP.....gg..",
+    "...........PPPPPPPPPP.......gg..",
+    ".............................gg.",
+    ".............................gg.",
+    "................................",
+    "................................",
+};
+
 const desenho_t arte_icone_arquivos   = { icone_arquivos, 32, 32 };
 const desenho_t arte_icone_terminal   = { icone_terminal, 32, 32 };
 const desenho_t arte_icone_editor     = { icone_editor, 32, 32 };
@@ -334,6 +369,7 @@ const desenho_t arte_icone_banana     = { icone_banana, 32, 32 };
 const desenho_t arte_icone_sagui3d    = { icone_sagui3d, 32, 32 };
 const desenho_t arte_icone_sobre      = { icone_sobre, 32, 32 };
 const desenho_t arte_icone_pendrive   = { icone_pendrive, 32, 32 };
+const desenho_t arte_icone_cipo       = { icone_cipo, 32, 32 };   /* navegador (D032) */
 
 /* Paleta: letra -> cor. Devolve false para transparente. */
 bool arte_cor(char letra, uint32_t *cor)

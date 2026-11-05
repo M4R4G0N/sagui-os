@@ -5,12 +5,16 @@
 #include "desenho.h"
 
 #define BARRA_SUPERIOR 24
+#define BARRA_TAREFAS  34   /* embaixo: Iniciar e um botão por janela */
 
 /* Área de trabalho (area_trabalho.c) */
 bool area_iniciar(void);
 void area_fundo(superficie_t *s);          /* copia o fundo pronto para o recorte de s */
 void area_barra(superficie_t *s);          /* barra superior com o relógio */
-bool area_relogio_mudou(void);
+bool area_relogio_mudou(void);             /* o minuto ou o estado da rede mudou */
+int  area_qtd_programas(void);             /* os ícones que abrem programas (para o menu Iniciar) */
+const char *area_icone_nome(int i);
+const desenho_t *area_icone_desenho(int i);
 int  area_icone_em(int x, int y);          /* índice do ícone sob o ponto, ou -1 */
 void area_icone_abrir(int i);
 int  area_qtd_icones(void);

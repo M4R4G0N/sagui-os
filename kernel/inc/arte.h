@@ -9,7 +9,8 @@ typedef struct {
 } desenho_t;
 
 extern const desenho_t arte_sagui, arte_icone_arquivos, arte_icone_terminal, arte_icone_editor,
-                       arte_icone_calculadora, arte_icone_banana, arte_icone_sagui3d, arte_icone_sobre, arte_icone_pendrive;
+                       arte_icone_calculadora, arte_icone_banana, arte_icone_sagui3d, arte_icone_sobre, arte_icone_pendrive,
+                       arte_icone_cipo;
 bool arte_cor(char letra, uint32_t *cor);
 
 #endif

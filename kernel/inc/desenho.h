@@ -13,6 +13,7 @@ typedef struct {
 void sup_iniciar(superficie_t *s, uint32_t *px, int larg, int alt);
 void sup_recorte(superficie_t *s, int x, int y, int l, int a);   /* l<=0: sem recorte */
 void sup_retangulo(superficie_t *s, int x, int y, int l, int a, uint32_t cor);
+void sup_escurecer(superficie_t *s, int x, int y, int l, int a);
 void sup_moldura(superficie_t *s, int x, int y, int l, int a, uint32_t cor);
 void sup_texto(superficie_t *s, int x, int y, const char *t, uint32_t cor);
 void sup_desenho(superficie_t *s, int x, int y, const desenho_t *d, int escala);
